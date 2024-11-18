@@ -121,27 +121,25 @@ func findDomain(cfc *client.Client, query string) (*resource.Domain, string, *ur
 		return &resource.Domain{}, "", routeUrl, fmt.Errorf("please provide the url including the scheme")
 	}
 
-	parts := strings.SplitN(routeUrl.Hostname(), ".", 2)
-	if len(parts) < 2 {
-		return &resource.Domain{}, "", routeUrl, fmt.Errorf("'%s' is not a domain", routeUrl.Hostname())
-	}
-	hostName := routeUrl.Hostname() //Subdomain is empty, set host and domain names to route url
-	domainName := routeUrl.Hostname()
-
 	domains, err := retrieveDomains(cfc, routeUrl.Hostname())
 	if err != nil {
-		return &resource.Domain{}, hostName, routeUrl, err
+		return &resource.Domain{}, routeUrl.Hostname(), routeUrl, err
 	}
 
 	if len(domains) == 0 {
-		hostName = parts[0] //Subdomain is not empty
-		domainName = parts[1]
+		urlParts := strings.SplitN(routeUrl.Hostname(), ".", 2)
+		if len(urlParts) < 2 {
+			return &resource.Domain{}, "", routeUrl, fmt.Errorf("'%s' is not a domain", routeUrl.Hostname())
+		}
+		hostName := urlParts[0] //Subdomain is not empty
+		domainName := urlParts[1]
 		domains, err = retrieveDomains(cfc, domainName)
 		if len(domains) == 0 {
 			return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("error retrieving apps: route not found, domain '%s' is unknown", domainName)
 		}
+		return domains[0], hostName, routeUrl, nil
 	}
-	return domains[0], hostName, routeUrl, nil
+	return domains[0], routeUrl.Hostname(), routeUrl, nil
 }
 
 func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
