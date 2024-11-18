@@ -32,8 +32,10 @@ Space       : <space> (<space_guid>)
 App         : <app> (<app_guid>)
 
 Targeting an app's organization and space...
+<cf target command output>
 Targeting an app's organization and space successful.
 
 $ cf lookup-route <unknown.example.com>
 Error retrieving apps: Route <unknown.example.com> not found.
 ```
+

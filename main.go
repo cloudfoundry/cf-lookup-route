@@ -102,50 +102,69 @@ func createCfClient() (*client.Client, error) {
 	return cfc, nil
 }
 
-func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
-	routeUrl, err := url.Parse(query)
-	if err != nil {
-		return &resource.Route{}, err
-	}
-	if routeUrl.Scheme == "" {
-		return &resource.Route{}, fmt.Errorf("please provide the url including the scheme")
-	}
-
-	parts := strings.SplitN(routeUrl.Hostname(), ".", 2)
-	if len(parts) < 2 {
-		return &resource.Route{}, fmt.Errorf("'%s' is not a domain", routeUrl.Hostname())
-	}
-	hostName := parts[0]
-	domainName := parts[1]
-
+func retrieveDomains(cfc *client.Client, domainName string) ([]*resource.Domain, error) {
 	domainOpts := client.NewDomainListOptions()
 	domainOpts.Names.Values = append(domainOpts.Names.Values, domainName)
 	domains, err := cfc.Domains.ListAll(context.Background(), domainOpts)
 	if err != nil {
-		return &resource.Route{}, err
+		return nil, err
+	}
+	return domains, nil
+}
+
+func findDomain(cfc *client.Client, query string) (*resource.Domain, string, *url.URL, error) {
+	routeUrl, err := url.Parse(query)
+	if err != nil {
+		return &resource.Domain{}, "", &url.URL{}, err
+	}
+	if routeUrl.Scheme == "" {
+		return &resource.Domain{}, "", routeUrl, fmt.Errorf("please provide the url including the scheme")
+	}
+
+	parts := strings.SplitN(routeUrl.Hostname(), ".", 2)
+	if len(parts) < 2 {
+		return &resource.Domain{}, "", routeUrl, fmt.Errorf("'%s' is not a domain", routeUrl.Hostname())
+	}
+	hostName := routeUrl.Hostname() //Subdomain is empty, set host and domain names to route url
+	domainName := routeUrl.Hostname()
+
+	domains, err := retrieveDomains(cfc, routeUrl.Hostname())
+	if err != nil {
+		return &resource.Domain{}, hostName, routeUrl, err
 	}
 
 	if len(domains) == 0 {
-		return &resource.Route{}, fmt.Errorf("error retrieving apps: route not found, domain '%s' is unknown", domainName)
+		hostName = parts[0] //Subdomain is not empty
+		domainName = parts[1]
+		domains, err = retrieveDomains(cfc, domainName)
+		if len(domains) == 0 {
+			return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("error retrieving apps: route not found, domain '%s' is unknown", domainName)
+		}
 	}
+	return domains[0], hostName, routeUrl, nil
+}
+
+func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
+	domain, hostName, routeUrl, err := findDomain(cfc, query)
 
 	opts := client.NewRouteListOptions()
 	opts.Hosts.Values = append(opts.Hosts.Values, hostName)
-	opts.DomainGUIDs.Values = append(opts.DomainGUIDs.Values, domains[0].GUID)
+	opts.DomainGUIDs.Values = append(opts.DomainGUIDs.Values, domain.GUID)
+	opts.Paths.Values = append(opts.Paths.Values, routeUrl.Path)
 
 	routes, err := cfc.Routes.ListAll(context.Background(), opts)
 	if err != nil {
 		return &resource.Route{}, err
 	}
 
-	if len(routes) == 0 {
+	if len(routes) == 0 { // Wildcard search
 		opts.Hosts.Values = append(opts.Hosts.Values, "*")
 		routes, err = cfc.Routes.ListAll(context.Background(), opts)
 		if err != nil {
 			return &resource.Route{}, err
 		}
 		if len(routes) == 0 {
-			return &resource.Route{}, fmt.Errorf("error retrieving apps: Route '%s' not found", hostName)
+			return &resource.Route{}, fmt.Errorf("error retrieving apps: route '%s' not found", routeUrl.Hostname())
 		}
 	}
 
