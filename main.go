@@ -8,7 +8,6 @@ import (
 	"github.com/cloudfoundry/go-cfclient/v3/client"
 	"github.com/cloudfoundry/go-cfclient/v3/config"
 	"github.com/cloudfoundry/go-cfclient/v3/resource"
-	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -29,9 +28,9 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		}
 	}()
 
-	log.SetFlags(0)
 	flags := flag.NewFlagSet("lookup-route", flag.ContinueOnError)
 	target := flags.Bool("t", false, "Target the org/space containing this route")
+	onlyFirstResult := flags.Bool("o", false, "Retrieve only one application for this route")
 	err = flags.Parse(args[1:])
 	if err != nil {
 		return
@@ -59,7 +58,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 
-	err = lookup(cfc, route, *target, cliConnection)
+	err = lookup(cfc, route, *target, *onlyFirstResult, cliConnection)
 	if err != nil {
 		return
 	}
@@ -81,6 +80,7 @@ func (l lookupRoute) GetMetadata() plugin.PluginMetadata {
 					Usage: "cf lookup-route [-t] ROUTE_URL",
 					Options: map[string]string{
 						"t": "Target the org/space containing the route",
+						"o": "Query only the first result",
 					},
 				},
 			},
@@ -112,7 +112,7 @@ func retrieveDomains(cfc *client.Client, domainName string) ([]*resource.Domain,
 	return domains, nil
 }
 
-func findDomain(cfc *client.Client, query string) (*resource.Domain, string, *url.URL, error) {
+func parseDomain(cfc *client.Client, query string) (*resource.Domain, string, *url.URL, error) {
 	routeUrl, err := url.Parse(query)
 	if err != nil {
 		return &resource.Domain{}, "", &url.URL{}, err
@@ -126,24 +126,26 @@ func findDomain(cfc *client.Client, query string) (*resource.Domain, string, *ur
 		return &resource.Domain{}, routeUrl.Hostname(), routeUrl, err
 	}
 
-	if len(domains) == 0 {
-		urlParts := strings.SplitN(routeUrl.Hostname(), ".", 2)
-		if len(urlParts) < 2 {
-			return &resource.Domain{}, "", routeUrl, fmt.Errorf("'%s' is not a domain", routeUrl.Hostname())
-		}
-		hostName := urlParts[0] //Subdomain is not empty
-		domainName := urlParts[1]
-		domains, err = retrieveDomains(cfc, domainName)
-		if len(domains) == 0 {
-			return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("error retrieving apps: route not found, domain '%s' is unknown", domainName)
-		}
-		return domains[0], hostName, routeUrl, nil
+	if len(domains) > 0 {
+		return domains[0], routeUrl.Hostname(), routeUrl, nil
 	}
-	return domains[0], routeUrl.Hostname(), routeUrl, nil
+
+	urlParts := strings.SplitN(routeUrl.Hostname(), ".", 2)
+	if len(urlParts) < 2 {
+		return &resource.Domain{}, "", routeUrl, fmt.Errorf("'%s' is not a domain", routeUrl.Hostname())
+	}
+	hostName := urlParts[0] //Subdomain is not empty
+	domainName := urlParts[1]
+	domains, err = retrieveDomains(cfc, domainName)
+	if len(domains) == 0 {
+		return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("error retrieving apps: route not found, domain '%s' is unknown", domainName)
+	}
+
+	return domains[0], hostName, routeUrl, nil
 }
 
 func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
-	domain, hostName, routeUrl, err := findDomain(cfc, query)
+	domain, hostName, routeUrl, err := parseDomain(cfc, query)
 
 	opts := client.NewRouteListOptions()
 	opts.Hosts.Values = append(opts.Hosts.Values, hostName)
@@ -155,27 +157,28 @@ func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 		return &resource.Route{}, err
 	}
 
-	if len(routes) == 0 { // Wildcard search
-		opts.Hosts.Values = append(opts.Hosts.Values, "*")
-		routes, err = cfc.Routes.ListAll(context.Background(), opts)
-		if err != nil {
-			return &resource.Route{}, err
-		}
-		if len(routes) == 0 {
-			return &resource.Route{}, fmt.Errorf("error retrieving apps: route '%s' not found", routeUrl.Hostname())
-		}
+	if len(routes) > 0 {
+		return routes[0], nil
+	}
+	// Wildcard search
+	opts.Hosts.Values = append(opts.Hosts.Values, "*")
+	routes, err = cfc.Routes.ListAll(context.Background(), opts)
+	if err != nil {
+		return &resource.Route{}, err
+	}
+	if len(routes) == 0 {
+		return &resource.Route{}, fmt.Errorf("error retrieving apps: route '%s' not found", routeUrl.Hostname())
 	}
 
 	return routes[0], nil
 }
 
-func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnection plugin.CliConnection) error {
+func lookup(cfc *client.Client, route *resource.Route, target bool, onlyFirstResult bool, cliConnection plugin.CliConnection) error {
 	if route.Destinations == nil || len(route.Destinations) == 0 {
 		return fmt.Errorf("route not bound to any applications")
 	}
 
-	destinationCount := 0
-	for _, destination := range route.Destinations {
+	for destinationCount, destination := range route.Destinations {
 		app, err := cfc.Applications.Get(context.Background(), *destination.App.GUID)
 		if err != nil {
 			return fmt.Errorf("route not bound to any applications")
@@ -185,12 +188,12 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 		if err != nil {
 			return err
 		}
-
-		fmt.Printf("Bound to:\nOrganization: %s (%s)\n", org.Name, org.GUID)
-		fmt.Printf("Space       : %s (%s)\n", space.Name, space.GUID)
+		if destinationCount == 0 {
+			fmt.Printf("Bound to:\nOrganization: %s (%s)\n", org.Name, org.GUID)
+			fmt.Printf("Space       : %s (%s)\n", space.Name, space.GUID)
+		}
 		fmt.Printf("App         : %s (%s)\n", app.Name, app.GUID)
-
-		if target && destinationCount == 0 {
+		if target && (destinationCount == len(route.Destinations)-1 || onlyFirstResult) {
 			fmt.Printf("Targeting an app's organization and space...\n")
 			_, err := cliConnection.CliCommand("target", "-o", org.Name, "-s", space.Name)
 			if err != nil {
@@ -198,8 +201,9 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 			}
 			fmt.Printf("Targeting an app's organization and space successful.\n")
 		}
-		destinationCount++
+		if destinationCount == 0 && onlyFirstResult {
+			break
+		}
 	}
-
 	return nil
 }

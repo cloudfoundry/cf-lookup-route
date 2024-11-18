@@ -1,4 +1,3 @@
-# cf-lookup-route
 # Cloud Foundry Route Lookup Plugin
 
 This is a Cloud Foundry CLI plugin to quickly identify applications, a given route is pointing to.
@@ -21,9 +20,17 @@ $ cf lookup-route <my.example.com>
 Bound to:
 Organization: <org> (<org_guid>)
 Space       : <space> (<space_guid>)
+App         : <app1> (<app_guid_1>)
+App         : <app2> (<app_guid_2>)
+
+#use -o to query only one app mapped to the route 
+$ cf lookup-route -o <my.example.com>
+Bound to:
+Organization: <org> (<org_guid>)
+Space       : <space> (<space_guid>)
 App         : <app> (<app_guid>)
 
-# use -t to target the org/space containing the route
+#use -t to target the org/space containing the route
 $ cf lookup-route -t <my.example.com>
 
 Bound to:
@@ -38,4 +45,3 @@ Targeting an app's organization and space successful.
 $ cf lookup-route <unknown.example.com>
 Error retrieving apps: Route <unknown.example.com> not found.
 ```
-
