@@ -1,4 +1,4 @@
-module github.com/maxmoehl/cf-lookup-route
+module github.com/cf-lookup-route
 
 go 1.19
 
