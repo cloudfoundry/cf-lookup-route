@@ -48,6 +48,15 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 
+	loggedIn, err := cliConnection.IsLoggedIn()
+	if err != nil {
+		return
+	}
+	if !loggedIn {
+		err = fmt.Errorf("error: please log in to search for apps")
+		return
+	}
+
 	cfc, err := createCfClient()
 	if err != nil {
 		return
