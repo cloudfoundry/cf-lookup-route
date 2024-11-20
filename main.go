@@ -84,9 +84,9 @@ func (l lookupRoute) GetMetadata() plugin.PluginMetadata {
 		Commands: []plugin.Command{
 			{
 				Name:     "lookup-route",
-				HelpText: "Cloud Foundry CLI plugin to identify the application, a given route is pointing to.",
+				HelpText: "Cloud Foundry CLI plugin to identify applications, a given route is pointing to.",
 				UsageDetails: plugin.Usage{
-					Usage: "cf lookup-route [-t] ROUTE_URL",
+					Usage: "cf lookup-route [-t] [-o] ROUTE_URL",
 					Options: map[string]string{
 						"t": "Target the org/space containing the route",
 						"o": "Query only the first result",
