@@ -1,4 +1,4 @@
-module github.com/cf-lookup-route
+module github.com/cloudfoundry/cf-lookup-route
 
 go 1.19
 

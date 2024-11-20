@@ -139,12 +139,11 @@ func parseDomain(cfc *client.Client, query string) (*resource.Domain, string, *u
 		return domains[0], routeUrl.Hostname(), routeUrl, nil
 	}
 
-	urlParts := strings.SplitN(routeUrl.Hostname(), ".", 2)
-	if len(urlParts) < 2 {
+	hostName, domainName, found := strings.Cut(routeUrl.Hostname(), ".")
+	if !found {
 		return &resource.Domain{}, "", routeUrl, fmt.Errorf("'%s' is not a domain", routeUrl.Hostname())
 	}
-	hostName := urlParts[0] //Subdomain is not empty
-	domainName := urlParts[1]
+
 	domains, err = retrieveDomains(cfc, domainName)
 	if len(domains) == 0 {
 		return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("error retrieving apps: route not found, domain '%s' is unknown", domainName)
