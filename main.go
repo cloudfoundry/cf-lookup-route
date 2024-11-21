@@ -11,7 +11,6 @@ import (
 	"math"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -209,12 +208,7 @@ func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, er
 	routeDestCount := len(appGuids)
 	batchSize := 100
 	batchCount := int(math.Ceil(float64(routeDestCount) / float64(batchSize)))
-
-	for i := 0; i < routeDestCount; i++ {
-		appGuids = append(appGuids, strconv.Itoa(i))
-	}
 	opts := client.NewAppListOptions()
-
 	opts.PerPage = batchSize
 
 	for i := 0; i < batchCount; i++ {
