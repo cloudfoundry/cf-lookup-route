@@ -187,6 +187,29 @@ func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 	return routes[0], nil
 }
 
+func getNumOfPackages(numOfRouteDest int, packLength int) int {
+	numOfPackages := 1
+	if int(numOfRouteDest/packLength) > 1 {
+		numOfPackages = numOfRouteDest / packLength
+		if int(numOfRouteDest%packLength) != 0 {
+			numOfPackages++
+		}
+	}
+	return numOfPackages
+}
+
+func getPackEndIdx(numOfRouteDest int, packLength int, numOfPackages int, currentIdx int) int {
+	packEndIdx := numOfRouteDest
+	if numOfPackages > 1 {
+		if currentIdx == numOfPackages-1 && int(numOfRouteDest%packLength) != 0 {
+			packEndIdx = currentIdx*packLength + numOfRouteDest%packLength
+		} else {
+			packEndIdx = currentIdx*packLength + packLength
+		}
+	}
+	return packEndIdx
+}
+
 func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnection plugin.CliConnection) error {
 	var appGuids []string
 	var apps []*resource.App
@@ -194,15 +217,14 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 	for _, destination := range route.Destinations {
 		appGuids = append(appGuids, *destination.App.GUID)
 	}
+	// Packaging of the apps (to reduce cf api calls)
+	numOfRouteDest := len(appGuids)
+	packLength := 100
+	numOfPackages := getNumOfPackages(numOfRouteDest, packLength)
 	opts := client.NewAppListOptions()
-	packLength := 100 // Packaging of the apps (to reduce cf api calls)
-	numOfPackages := len(route.Destinations)/packLength + 1
 
 	for i := 0; i < numOfPackages; i++ {
-		packEndIdx := len(appGuids)
-		if numOfPackages > 1 {
-			packEndIdx = i*packLength + packLength
-		}
+		packEndIdx := getPackEndIdx(numOfRouteDest, packLength, numOfPackages, i)
 		for j := i * packLength; j < packEndIdx; j++ {
 			opts.GUIDs.Values = append(opts.GUIDs.Values, appGuids[j])
 		}
@@ -211,6 +233,7 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 			return fmt.Errorf("route not bound to any applications")
 		}
 		apps = append(apps, packApps...)
+		packApps = nil
 		opts.GUIDs.Values = nil
 	}
 
