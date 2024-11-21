@@ -3,6 +3,7 @@
 This is a Cloud Foundry CLI plugin to quickly identify applications, a given route is pointing to.
 Note this will only show applications in organizations and spaces, that the logged-in user has permissions to view.
 The plugin also supports targeting to the organization and space of the applications, a given route is pointing to.
+The CF API calls are grouped into the packages of 100 app guids per call as needed.
 
 ## Installation
 
