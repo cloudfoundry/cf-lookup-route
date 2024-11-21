@@ -206,11 +206,11 @@ func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, er
 	}
 
 	// Packaging of the apps (to reduce cf api calls)
-	numOfRouteDest := len(appGuids)
+	routeDestCount := len(appGuids)
 	batchSize := 100
-	batchCount := int(math.Ceil(float64(numOfRouteDest) / float64(batchSize)))
+	batchCount := int(math.Ceil(float64(routeDestCount) / float64(batchSize)))
 
-	for i := 0; i < numOfRouteDest; i++ {
+	for i := 0; i < routeDestCount; i++ {
 		appGuids = append(appGuids, strconv.Itoa(i))
 	}
 	opts := client.NewAppListOptions()
@@ -218,7 +218,7 @@ func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, er
 	opts.PerPage = batchSize
 
 	for i := 0; i < batchCount; i++ {
-		opts.GUIDs.Values = appGuids[i*batchSize : getPackEndIdx(numOfRouteDest, batchSize, i)]
+		opts.GUIDs.Values = appGuids[i*batchSize : getPackEndIdx(routeDestCount, batchSize, i)]
 		packApps, err := cfc.Applications.ListAll(context.Background(), opts)
 		if err != nil {
 			err = fmt.Errorf("route not bound to any applications")
