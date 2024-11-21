@@ -23,13 +23,6 @@ Space       : <space> (<space_guid>)
 App         : <app1> (<app_guid_1>)
 App         : <app2> (<app_guid_2>)
 
-#use -o to query only one app mapped to the route 
-$ cf lookup-route -o <my.example.com>
-Bound to:
-Organization: <org> (<org_guid>)
-Space       : <space> (<space_guid>)
-App         : <app> (<app_guid>)
-
 #use -t to target the org/space containing the route
 $ cf lookup-route -t <my.example.com>
 
