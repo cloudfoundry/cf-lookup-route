@@ -221,7 +221,6 @@ func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, er
 		opts.GUIDs.Values = appGuids[i*batchSize : getPackEndIdx(routeDestCount, batchSize, i)]
 		packApps, err := cfc.Applications.ListAll(context.Background(), opts)
 		if err != nil {
-			err = fmt.Errorf("route not bound to any applications")
 			return []*resource.App{}, err
 		}
 		apps = append(apps, packApps...)
