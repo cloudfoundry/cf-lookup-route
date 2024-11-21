@@ -69,6 +69,10 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 	if err != nil {
 		return
 	}
+	if route.Destinations == nil || len(route.Destinations) == 0 {
+		err = fmt.Errorf("route not bound to any applications")
+		return
+	}
 
 	err = lookup(cfc, route, *target, cliConnection)
 	if err != nil {
@@ -184,18 +188,13 @@ func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 }
 
 func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnection plugin.CliConnection) error {
-	if route.Destinations == nil || len(route.Destinations) == 0 {
-		return fmt.Errorf("route not bound to any applications")
-	}
 	var appGuids []string
 	var apps []*resource.App
 
 	for _, destination := range route.Destinations {
 		appGuids = append(appGuids, *destination.App.GUID)
 	}
-
 	opts := client.NewAppListOptions()
-
 	packLength := 100 // Packaging of the apps (to reduce cf api calls)
 	numOfPackages := len(route.Destinations)/packLength + 1
 
@@ -218,7 +217,6 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 	if len(apps) == 0 {
 		return fmt.Errorf("route not bound to any applications")
 	}
-
 	// All the apps sharing a route must be in the same org and space
 	space, org, err := cfc.Spaces.GetIncludeOrganization(context.Background(), apps[0].Relationships.Space.Data.GUID)
 	if err != nil {
