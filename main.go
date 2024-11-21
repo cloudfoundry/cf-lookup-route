@@ -189,7 +189,7 @@ func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 	return routes[0], nil
 }
 
-func getPackEndIdx(numOfRouteDest int, packLength int, currentIdx int) int {
+func getBatchEndIdx(numOfRouteDest int, packLength int, currentIdx int) int {
 	packEndIdx := currentIdx*packLength + packLength
 	if packEndIdx > numOfRouteDest {
 		packEndIdx = numOfRouteDest
@@ -205,7 +205,7 @@ func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, er
 		appGuids = append(appGuids, *destination.App.GUID)
 	}
 
-	// Packaging of the apps (to reduce cf api calls)
+	// Batching of app queries (to reduce cf api calls)
 	routeDestCount := len(appGuids)
 	batchSize := 100
 	batchCount := int(math.Ceil(float64(routeDestCount) / float64(batchSize)))
@@ -218,12 +218,12 @@ func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, er
 	opts.PerPage = batchSize
 
 	for i := 0; i < batchCount; i++ {
-		opts.GUIDs.Values = appGuids[i*batchSize : getPackEndIdx(routeDestCount, batchSize, i)]
-		packApps, err := cfc.Applications.ListAll(context.Background(), opts)
+		opts.GUIDs.Values = appGuids[i*batchSize : getBatchEndIdx(routeDestCount, batchSize, i)]
+		batchApps, err := cfc.Applications.ListAll(context.Background(), opts)
 		if err != nil {
 			return []*resource.App{}, err
 		}
-		apps = append(apps, packApps...)
+		apps = append(apps, batchApps...)
 	}
 	return apps, nil
 }
