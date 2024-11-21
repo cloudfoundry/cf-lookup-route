@@ -28,9 +28,11 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		}
 	}()
 
+	if args[0] == "CLI-MESSAGE-UNINSTALL" {
+		return
+	}
 	flags := flag.NewFlagSet("lookup-route", flag.ContinueOnError)
 	target := flags.Bool("t", false, "Target the org/space containing this route")
-	onlyFirstResult := flags.Bool("o", false, "Retrieve only one application for this route")
 	err = flags.Parse(args[1:])
 	if err != nil {
 		return
@@ -40,6 +42,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		err = fmt.Errorf("please specify the required parameters")
 		return
 	}
+
 	hostName := flags.Args()[0]
 
 	hasApiEndpoint, err := cliConnection.HasAPIEndpoint()
@@ -53,7 +56,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 	if !loggedIn {
-		err = fmt.Errorf("error: please log in to search for apps")
+		err = fmt.Errorf("please log in to search for apps")
 		return
 	}
 
@@ -67,7 +70,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 
-	err = lookup(cfc, route, *target, *onlyFirstResult, cliConnection)
+	err = lookup(cfc, route, *target, cliConnection)
 	if err != nil {
 		return
 	}
@@ -86,10 +89,9 @@ func (l lookupRoute) GetMetadata() plugin.PluginMetadata {
 				Name:     "lookup-route",
 				HelpText: "Cloud Foundry CLI plugin to identify applications, a given route is pointing to.",
 				UsageDetails: plugin.Usage{
-					Usage: "cf lookup-route [-t] [-o] ROUTE_URL",
+					Usage: "cf lookup-route [-t] ROUTE_URL",
 					Options: map[string]string{
 						"t": "Target the org/space containing the route",
-						"o": "Query only the first result",
 					},
 				},
 			},
@@ -181,37 +183,61 @@ func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 	return routes[0], nil
 }
 
-func lookup(cfc *client.Client, route *resource.Route, target bool, onlyFirstResult bool, cliConnection plugin.CliConnection) error {
+func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnection plugin.CliConnection) error {
 	if route.Destinations == nil || len(route.Destinations) == 0 {
 		return fmt.Errorf("route not bound to any applications")
 	}
+	var appGuids []string
+	var apps []*resource.App
 
-	for destinationCount, destination := range route.Destinations {
-		app, err := cfc.Applications.Get(context.Background(), *destination.App.GUID)
+	for _, destination := range route.Destinations {
+		appGuids = append(appGuids, *destination.App.GUID)
+	}
+
+	opts := client.NewAppListOptions()
+
+	packLength := 100 // Packaging of the apps (to reduce cf api calls)
+	numOfPackages := len(route.Destinations)/packLength + 1
+
+	for i := 0; i < numOfPackages; i++ {
+		packEndIdx := len(appGuids)
+		if numOfPackages > 1 {
+			packEndIdx = i*packLength + packLength
+		}
+		for j := i * packLength; j < packEndIdx; j++ {
+			opts.GUIDs.Values = append(opts.GUIDs.Values, appGuids[j])
+		}
+		packApps, err := cfc.Applications.ListAll(context.Background(), opts)
 		if err != nil {
 			return fmt.Errorf("route not bound to any applications")
 		}
+		apps = append(apps, packApps...)
+		opts.GUIDs.Values = nil
+	}
 
-		space, org, err := cfc.Spaces.GetIncludeOrganization(context.Background(), app.Relationships.Space.Data.GUID)
-		if err != nil {
-			return err
-		}
-		if destinationCount == 0 {
-			fmt.Printf("Bound to:\nOrganization: %s (%s)\n", org.Name, org.GUID)
-			fmt.Printf("Space       : %s (%s)\n", space.Name, space.GUID)
-		}
+	if len(apps) == 0 {
+		return fmt.Errorf("route not bound to any applications")
+	}
+
+	// All the apps sharing a route must be in the same org and space
+	space, org, err := cfc.Spaces.GetIncludeOrganization(context.Background(), apps[0].Relationships.Space.Data.GUID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Bound to:\nOrganization: %s (%s)\n", org.Name, org.GUID)
+	fmt.Printf("Space       : %s (%s)\n", space.Name, space.GUID)
+
+	for _, app := range apps {
 		fmt.Printf("App         : %s (%s)\n", app.Name, app.GUID)
-		if target && (destinationCount == len(route.Destinations)-1 || onlyFirstResult) {
-			fmt.Printf("Targeting an app's organization and space...\n")
-			_, err := cliConnection.CliCommand("target", "-o", org.Name, "-s", space.Name)
-			if err != nil {
-				fmt.Printf("targeting an app's organization and space failed\n")
-			}
-			fmt.Printf("Targeting an app's organization and space successful.\n")
+	}
+
+	if target {
+		fmt.Printf("Targeting an app's organization and space...\n")
+		_, err := cliConnection.CliCommand("target", "-o", org.Name, "-s", space.Name)
+		if err != nil {
+			fmt.Printf("targeting an app's organization and space failed\n")
 		}
-		if destinationCount == 0 && onlyFirstResult {
-			break
-		}
+		fmt.Printf("Targeting an app's organization and space successful.\n")
 	}
 	return nil
 }
