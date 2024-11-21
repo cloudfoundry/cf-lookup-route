@@ -224,8 +224,7 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 	opts := client.NewAppListOptions()
 
 	for i := 0; i < numOfPackages; i++ {
-		packEndIdx := getPackEndIdx(numOfRouteDest, packLength, numOfPackages, i)
-		for j := i * packLength; j < packEndIdx; j++ {
+		for j := i * packLength; j < getPackEndIdx(numOfRouteDest, packLength, numOfPackages, i); j++ {
 			opts.GUIDs.Values = append(opts.GUIDs.Values, appGuids[j])
 		}
 		packApps, err := cfc.Applications.ListAll(context.Background(), opts)
