@@ -8,8 +8,10 @@ import (
 	"github.com/cloudfoundry/go-cfclient/v3/client"
 	"github.com/cloudfoundry/go-cfclient/v3/config"
 	"github.com/cloudfoundry/go-cfclient/v3/resource"
+	"math"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -187,77 +189,83 @@ func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 	return routes[0], nil
 }
 
-func getNumOfPackages(numOfRouteDest int, packLength int) int {
-	numOfPackages := 1
-	if int(numOfRouteDest/packLength) > 1 {
-		numOfPackages = numOfRouteDest / packLength
-		if int(numOfRouteDest%packLength) != 0 {
-			numOfPackages++
-		}
-	}
-	return numOfPackages
-}
-
-func getPackEndIdx(numOfRouteDest int, packLength int, numOfPackages int, currentIdx int) int {
-	packEndIdx := numOfRouteDest
-	if numOfPackages > 1 {
-		if currentIdx == numOfPackages-1 && int(numOfRouteDest%packLength) != 0 {
-			packEndIdx = currentIdx*packLength + numOfRouteDest%packLength
-		} else {
-			packEndIdx = currentIdx*packLength + packLength
-		}
+func getPackEndIdx(numOfRouteDest int, packLength int, currentIdx int) int {
+	packEndIdx := currentIdx*packLength + packLength
+	if packEndIdx > numOfRouteDest {
+		packEndIdx = numOfRouteDest
 	}
 	return packEndIdx
 }
 
-func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnection plugin.CliConnection) error {
+func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, error) {
 	var appGuids []string
 	var apps []*resource.App
 
 	for _, destination := range route.Destinations {
 		appGuids = append(appGuids, *destination.App.GUID)
 	}
+
 	// Packaging of the apps (to reduce cf api calls)
 	numOfRouteDest := len(appGuids)
-	packLength := 100
-	numOfPackages := getNumOfPackages(numOfRouteDest, packLength)
+	batchSize := 100
+	batchCount := int(math.Ceil(float64(numOfRouteDest) / float64(batchSize)))
+
+	for i := 0; i < numOfRouteDest; i++ {
+		appGuids = append(appGuids, strconv.Itoa(i))
+	}
 	opts := client.NewAppListOptions()
 
-	for i := 0; i < numOfPackages; i++ {
-		for j := i * packLength; j < getPackEndIdx(numOfRouteDest, packLength, numOfPackages, i); j++ {
-			opts.GUIDs.Values = append(opts.GUIDs.Values, appGuids[j])
-		}
+	opts.PerPage = batchSize
+
+	for i := 0; i < batchCount; i++ {
+		opts.GUIDs.Values = appGuids[i*batchSize : getPackEndIdx(numOfRouteDest, batchSize, i)]
 		packApps, err := cfc.Applications.ListAll(context.Background(), opts)
 		if err != nil {
-			return fmt.Errorf("route not bound to any applications")
+			err = fmt.Errorf("route not bound to any applications")
+			return []*resource.App{}, err
 		}
 		apps = append(apps, packApps...)
-		packApps = nil
-		opts.GUIDs.Values = nil
 	}
+	return apps, nil
+}
 
+func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnection plugin.CliConnection) error {
+	apps, err := resolveApps(cfc, route)
+	if err != nil {
+		return err
+	}
 	if len(apps) == 0 {
 		return fmt.Errorf("route not bound to any applications")
 	}
+
 	// All the apps sharing a route must be in the same org and space
 	space, org, err := cfc.Spaces.GetIncludeOrganization(context.Background(), apps[0].Relationships.Space.Data.GUID)
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("Bound to:\nOrganization: %s (%s)\n", org.Name, org.GUID)
 	fmt.Printf("Space       : %s (%s)\n", space.Name, space.GUID)
-
 	for _, app := range apps {
 		fmt.Printf("App         : %s (%s)\n", app.Name, app.GUID)
 	}
 
 	if target {
-		fmt.Printf("Targeting an app's organization and space...\n")
-		_, err := cliConnection.CliCommand("target", "-o", org.Name, "-s", space.Name)
+		err = targetAppSpace(org.Name, space.Name, cliConnection)
 		if err != nil {
-			fmt.Printf("targeting an app's organization and space failed\n")
+			return err
 		}
-		fmt.Printf("Targeting an app's organization and space successful.\n")
 	}
+	return nil
+}
+
+func targetAppSpace(org string, space string, cliConnection plugin.CliConnection) error {
+	fmt.Printf("Targeting an app's organization and space...\n")
+	_, err := cliConnection.CliCommand("target", "-o", org, "-s", space)
+	if err != nil {
+		fmt.Printf("targeting an app's organization and space failed\n")
+		return err
+	}
+	fmt.Printf("Targeting an app's organization and space successful.\n")
 	return nil
 }
