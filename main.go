@@ -188,10 +188,10 @@ func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 	return routes[0], nil
 }
 
-func getBatchEndIdx(numOfRouteDest int, batchCount int, currentIdx int) int {
+func getBatchEndIdx(routeDestCount int, batchCount int, currentIdx int) int {
 	batchEndIdx := currentIdx*batchCount + batchCount
-	if batchEndIdx > numOfRouteDest {
-		batchEndIdx = numOfRouteDest
+	if batchEndIdx > routeDestCount {
+		batchEndIdx = routeDestCount
 	}
 	return batchEndIdx
 }
