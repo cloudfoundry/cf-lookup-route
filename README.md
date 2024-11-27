@@ -16,7 +16,7 @@ The plugin also supports targeting to the organization and space of the applicat
 ## Usage
 
 ```
-$ cf lookup-route <my.example.com>
+$ cf lookup-route <https://my.example.com>
 Bound to:
 Organization: <org> (<org_guid>)
 Space       : <space> (<space_guid>)
@@ -24,7 +24,7 @@ App         : <app1> (<app_guid_1>)
 App         : <app2> (<app_guid_2>)
 
 #use -t to target the org/space containing the route
-$ cf lookup-route -t <my.example.com>
+$ cf lookup-route -t <https://my.example.com>
 
 Bound to:
 Organization: <org> (<org_guid>)
@@ -35,6 +35,6 @@ Targeting an app's organization and space...
 <cf target command output>
 Targeting an app's organization and space successful.
 
-$ cf lookup-route <unknown.example.com>
+$ cf lookup-route <https://unknown.example.com>
 Error retrieving apps: Route <unknown.example.com> not found.
 ```
