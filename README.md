@@ -9,11 +9,20 @@ The plugin also supports targeting to the organization and space of the applicat
 1. Download the appropriate binary from [the Releases page](https://github.com/cloudfoundry/cf-lookup-route/releases).
 2. Run
 
-    ```sh
-    cf install-plugin -r CF-Community PATH_TO_ROUTE_LOOKUP_BIN
+    ```
+   cf install-plugin -r CF-Community cf-lookup-route
+      or
+   cf install-plugin PATH_TO_ROUTE_LOOKUP_BINARY
+
     ```
 
 ## Usage
+
+OPTIONS:
+
+-t: Target the org/space containing the route
+
+EXAMPLES:
 
 ```
 $ cf lookup-route <my.example.com>
@@ -23,7 +32,6 @@ Space       : <space> (<space_guid>)
 App         : <app1> (<app_guid_1>)
 App         : <app2> (<app_guid_2>)
 
-#use -t to target the org/space containing the route
 $ cf lookup-route -t <my.example.com>
 
 Bound to:
@@ -38,3 +46,7 @@ Targeting an app's organization and space successful.
 $ cf lookup-route <unknown.example.com>
 Error retrieving apps: Route <unknown.example.com> not found.
 ```
+## Uninstallation
+    ```
+    cf uninstall-plugin lookup-route
+    ```
