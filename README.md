@@ -8,10 +8,10 @@ The plugin also supports targeting to the organization and space of the applicat
 
 Run
 
-    ```
-    cf install-plugin -r CF-Community cf-lookup-route
-    ```
-
+```
+cf install-plugin -r CF-Community cf-lookup-route
+```
+    
 Alternatively:
 
 1. Download the appropriate binary from [the Releases page](https://github.com/cloudfoundry/cf-lookup-route/releases).
@@ -52,6 +52,7 @@ $ cf lookup-route <unknown.example.com>
 Error retrieving apps: Route <unknown.example.com> not found.
 ```
 ## Uninstallation
-    ```
-    cf uninstall-plugin lookup-route
-    ```
+
+```
+cf uninstall-plugin lookup-route
+```
