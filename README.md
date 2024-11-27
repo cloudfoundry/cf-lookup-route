@@ -6,14 +6,16 @@ The plugin also supports targeting to the organization and space of the applicat
 
 ## Installation
 
-1. Download the appropriate binary from [the Releases page](https://github.com/cloudfoundry/cf-lookup-route/releases).
-2. Run
-
+Run
     ```
    cf install-plugin -r CF-Community cf-lookup-route
-      or
-   cf install-plugin PATH_TO_ROUTE_LOOKUP_BINARY
+    ```
+Alternatively:
 
+1. Download the appropriate binary from [the Releases page](https://github.com/cloudfoundry/cf-lookup-route/releases).
+2. Run
+    ```
+   cf install-plugin PATH_TO_ROUTE_LOOKUP_BINARY
     ```
 
 ## Usage
