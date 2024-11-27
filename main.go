@@ -161,6 +161,9 @@ func parseDomain(cfc *client.Client, query string) (*resource.Domain, string, *u
 
 func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 	domain, hostName, routeUrl, err := parseDomain(cfc, query)
+	if err != nil {
+		return &resource.Route{}, err
+	}
 
 	opts := client.NewRouteListOptions()
 	opts.Hosts.Values = append(opts.Hosts.Values, hostName)
