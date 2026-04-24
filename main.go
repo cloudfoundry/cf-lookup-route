@@ -1,17 +1,18 @@
 package main
 
 import (
-	"code.cloudfoundry.org/cli/plugin"
 	"context"
 	"flag"
 	"fmt"
-	"github.com/cloudfoundry/go-cfclient/v3/client"
-	"github.com/cloudfoundry/go-cfclient/v3/config"
-	"github.com/cloudfoundry/go-cfclient/v3/resource"
 	"math"
 	"net/url"
 	"os"
 	"strings"
+
+	"code.cloudfoundry.org/cli/v8/plugin"
+	"github.com/cloudfoundry/go-cfclient/v3/client"
+	"github.com/cloudfoundry/go-cfclient/v3/config"
+	"github.com/cloudfoundry/go-cfclient/v3/resource"
 )
 
 type lookupRoute struct{}
@@ -39,8 +40,8 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 
-	if len(flags.Args()) == 0 || len(args) == 0 {
-		err = fmt.Errorf("please specify the required parameters")
+	if len(flags.Args()) == 0 {
+		err = fmt.Errorf("missing ROUTE_URL argument. Usage: cf lookup-route [-t] ROUTE_URL")
 		return
 	}
 
@@ -48,7 +49,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 
 	hasApiEndpoint, err := cliConnection.HasAPIEndpoint()
 	if err != nil || !hasApiEndpoint {
-		err = fmt.Errorf("no API endpoint set")
+		err = fmt.Errorf("no API endpoint targeted. Run 'cf login' or 'cf api <API_ENDPOINT>' to set one")
 		return
 	}
 
@@ -57,7 +58,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 	if !loggedIn {
-		err = fmt.Errorf("please log in to search for apps")
+		err = fmt.Errorf("not authenticated. Run 'cf login' first")
 		return
 	}
 
@@ -71,7 +72,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 	if route.Destinations == nil || len(route.Destinations) == 0 {
-		err = fmt.Errorf("route not bound to any applications")
+		err = fmt.Errorf("route '%s' is not bound to any applications", hostName)
 		return
 	}
 
@@ -84,9 +85,10 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 func (l lookupRoute) GetMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name: "lookup-route",
+		// See https://github.com/cloudfoundry/cli-plugin-repo/README.md for version publishing procedure.
 		Version: plugin.VersionType{
 			Major: 0,
-			Minor: 1,
+			Minor: 2,
 			Build: 0,
 		},
 		Commands: []plugin.Command{
@@ -129,12 +131,18 @@ func retrieveDomains(cfc *client.Client, domainName string) ([]*resource.Domain,
 }
 
 func parseDomain(cfc *client.Client, query string) (*resource.Domain, string, *url.URL, error) {
-	routeUrl, err := url.Parse(query)
+	normalizedQuery := strings.TrimSpace(query)
+	routeUrl, err := url.Parse(normalizedQuery)
 	if err != nil {
-		return &resource.Domain{}, "", &url.URL{}, err
+		return &resource.Domain{}, "", &url.URL{}, fmt.Errorf("failed to parse route %q: %w", query, err)
 	}
+	// If no scheme is provided, default to https so the input is parsed as a URL host, not a path.
+	// The scheme itself is not used for route lookup.
 	if routeUrl.Scheme == "" {
-		return &resource.Domain{}, "", routeUrl, fmt.Errorf("please provide the url including the scheme")
+		routeUrl, err = url.Parse("https://" + normalizedQuery)
+		if err != nil {
+			return &resource.Domain{}, "", &url.URL{}, fmt.Errorf("failed to parse route %q with 'https://' prefix: %w", query, err)
+		}
 	}
 
 	domains, err := retrieveDomains(cfc, routeUrl.Hostname())
@@ -148,12 +156,12 @@ func parseDomain(cfc *client.Client, query string) (*resource.Domain, string, *u
 
 	hostName, domainName, found := strings.Cut(routeUrl.Hostname(), ".")
 	if !found {
-		return &resource.Domain{}, "", routeUrl, fmt.Errorf("'%s' is not a domain", routeUrl.Hostname())
+		return &resource.Domain{}, "", routeUrl, fmt.Errorf("invalid route '%s': expected a domain (e.g., 'my.example.com')", routeUrl.Hostname())
 	}
 
 	domains, err = retrieveDomains(cfc, domainName)
 	if len(domains) == 0 {
-		return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("error retrieving apps: route not found, domain '%s' is unknown", domainName)
+		return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("domain '%s' not found", domainName)
 	}
 
 	return domains[0], hostName, routeUrl, nil
@@ -172,20 +180,20 @@ func findRoute(cfc *client.Client, query string) (*resource.Route, error) {
 
 	routes, err := cfc.Routes.ListAll(context.Background(), opts)
 	if err != nil {
-		return &resource.Route{}, err
+		return &resource.Route{}, fmt.Errorf("failed to retrieve route '%s': %w", query, err)
 	}
 
 	if len(routes) > 0 {
 		return routes[0], nil
 	}
-	// Wildcard search
+	// Retry with wildcard host fallback.
 	opts.Hosts.Values = append(opts.Hosts.Values, "*")
 	routes, err = cfc.Routes.ListAll(context.Background(), opts)
 	if err != nil {
-		return &resource.Route{}, err
+		return &resource.Route{}, fmt.Errorf("failed to retrieve wildcard route for '%s': %w", query, err)
 	}
 	if len(routes) == 0 {
-		return &resource.Route{}, fmt.Errorf("error retrieving apps: route '%s' not found", routeUrl.Hostname())
+		return &resource.Route{}, fmt.Errorf("route '%s' not found", routeUrl.Hostname())
 	}
 
 	return routes[0], nil
@@ -207,7 +215,7 @@ func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, er
 		appGuids = append(appGuids, *destination.App.GUID)
 	}
 
-	// Batching of app queries (to reduce cf api calls)
+	// Query apps in batches to reduce API calls.
 	routeDestCount := len(appGuids)
 	batchSize := 100
 	batchCount := int(math.Ceil(float64(routeDestCount) / float64(batchSize)))
@@ -231,13 +239,18 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 		return err
 	}
 	if len(apps) == 0 {
-		return fmt.Errorf("route not bound to any applications")
+		return fmt.Errorf("no applications found for this route")
 	}
 
-	// All the apps sharing a route must be in the same org and space
-	space, org, err := cfc.Spaces.GetIncludeOrganization(context.Background(), apps[0].Relationships.Space.Data.GUID)
+	spaceRel := apps[0].Relationships.Space.Data
+	if spaceRel == nil || spaceRel.GUID == "" {
+		return fmt.Errorf("failed to resolve organization/space for app '%s': no space relationship data", apps[0].Name)
+	}
+
+	// All the apps sharing a route must be in the same org and space.
+	space, org, err := cfc.Spaces.GetIncludeOrganization(context.Background(), spaceRel.GUID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to resolve organization/space for app '%s': %w", apps[0].Name, err)
 	}
 
 	fmt.Printf("Bound to:\nOrganization: %s (%s)\n", org.Name, org.GUID)
@@ -251,17 +264,23 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 		if err != nil {
 			return err
 		}
+	} else {
+		fmt.Printf("\nTo target this org/space, run:\n  cf target -o %s -s %s\n\n", org.Name, space.Name)
 	}
 	return nil
 }
 
 func targetAppSpace(org string, space string, cliConnection plugin.CliConnection) error {
-	fmt.Printf("Targeting an app's organization and space...\n")
-	_, err := cliConnection.CliCommand("target", "-o", org, "-s", space)
-	if err != nil {
-		fmt.Printf("targeting an app's organization and space failed\n")
-		return err
-	}
-	fmt.Printf("Targeting an app's organization and space successful.\n")
+	// TODO: Re-enable -t once the plugin CLI v2->v3 transition path is finalized.
+	fmt.Printf("The option -t is not supported in this plugin version.\n")
 	return nil
+
+	//fmt.Printf("Targeting an app's organization and space...\n")
+	//_, err := cliConnection.CliCommand("target", "-o", org, "-s", space)
+	//if err != nil {
+	//	fmt.Printf("targeting an app's organization and space failed\n")
+	//	return err
+	//}
+	//fmt.Printf("Targeting an app's organization and space successful.\n")
+	//return nil
 }
