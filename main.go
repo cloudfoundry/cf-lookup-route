@@ -34,14 +34,13 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 	flags := flag.NewFlagSet("lookup-route", flag.ContinueOnError)
-	target := flags.Bool("t", false, "Target the org/space containing this route")
 	err = flags.Parse(args[1:])
 	if err != nil {
 		return
 	}
 
 	if len(flags.Args()) == 0 {
-		err = fmt.Errorf("missing ROUTE_URL argument. Usage: cf lookup-route [-t] ROUTE_URL")
+		err = fmt.Errorf("missing ROUTE_URL argument. Usage: cf lookup-route ROUTE_URL")
 		return
 	}
 
@@ -76,7 +75,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 		return
 	}
 
-	err = lookup(cfc, route, *target, cliConnection)
+	err = lookup(cfc, route)
 	if err != nil {
 		return
 	}
@@ -96,10 +95,7 @@ func (l lookupRoute) GetMetadata() plugin.PluginMetadata {
 				Name:     "lookup-route",
 				HelpText: "Cloud Foundry CLI plugin to identify applications, a given route is pointing to.",
 				UsageDetails: plugin.Usage{
-					Usage: "cf lookup-route [-t] ROUTE_URL",
-					Options: map[string]string{
-						"t": "Target the org/space containing the route",
-					},
+					Usage: "cf lookup-route ROUTE_URL",
 				},
 			},
 		},
@@ -233,7 +229,7 @@ func resolveApps(cfc *client.Client, route *resource.Route) ([]*resource.App, er
 	return apps, nil
 }
 
-func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnection plugin.CliConnection) error {
+func lookup(cfc *client.Client, route *resource.Route) error {
 	apps, err := resolveApps(cfc, route)
 	if err != nil {
 		return err
@@ -259,28 +255,6 @@ func lookup(cfc *client.Client, route *resource.Route, target bool, cliConnectio
 		fmt.Printf("App         : %s (%s)\n", app.Name, app.GUID)
 	}
 
-	if target {
-		err = targetAppSpace(org.Name, space.Name, cliConnection)
-		if err != nil {
-			return err
-		}
-	} else {
-		fmt.Printf("\nTo target this org/space, run:\n  cf target -o %s -s %s\n\n", org.Name, space.Name)
-	}
+	fmt.Printf("\nTo target this org/space, run:\n  cf target -o %s -s %s\n\n", org.Name, space.Name)
 	return nil
-}
-
-func targetAppSpace(org string, space string, cliConnection plugin.CliConnection) error {
-	// TODO: Re-enable -t once the plugin CLI v2->v3 transition path is finalized.
-	fmt.Printf("The option -t is not supported in this plugin version.\n")
-	return nil
-
-	//fmt.Printf("Targeting an app's organization and space...\n")
-	//_, err := cliConnection.CliCommand("target", "-o", org, "-s", space)
-	//if err != nil {
-	//	fmt.Printf("targeting an app's organization and space failed\n")
-	//	return err
-	//}
-	//fmt.Printf("Targeting an app's organization and space successful.\n")
-	//return nil
 }
