@@ -17,6 +17,8 @@ import (
 
 type lookupRoute struct{}
 
+const usageDescription = "cf lookup-route ROUTE_URL"
+
 func main() {
 	plugin.Start(new(lookupRoute))
 }
@@ -40,7 +42,7 @@ func (l lookupRoute) Run(cliConnection plugin.CliConnection, args []string) {
 	}
 
 	if len(flags.Args()) == 0 {
-		err = fmt.Errorf("missing ROUTE_URL argument. Usage: cf lookup-route ROUTE_URL")
+		err = fmt.Errorf("missing ROUTE_URL argument. Usage: %s", usageDescription)
 		return
 	}
 
@@ -95,7 +97,7 @@ func (l lookupRoute) GetMetadata() plugin.PluginMetadata {
 				Name:     "lookup-route",
 				HelpText: "Cloud Foundry CLI plugin to identify applications, a given route is pointing to.",
 				UsageDetails: plugin.Usage{
-					Usage: "cf lookup-route ROUTE_URL",
+					Usage: usageDescription,
 				},
 			},
 		},
@@ -156,6 +158,9 @@ func parseDomain(cfc *client.Client, query string) (*resource.Domain, string, *u
 	}
 
 	domains, err = retrieveDomains(cfc, domainName)
+	if err != nil {
+		return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("failed to look up domain '%s': %w", domainName, err)
+	}
 	if len(domains) == 0 {
 		return &resource.Domain{}, hostName, routeUrl, fmt.Errorf("domain '%s' not found", domainName)
 	}
